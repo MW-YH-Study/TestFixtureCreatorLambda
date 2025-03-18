@@ -1,0 +1,131 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+    id "org.jooq.jooq-codegen-gradle" version "3.19.10"
+}
+
+group = 'me.yeonhyuk'
+version = '1.0-SNAPSHOT'
+
+ext {
+    jooq_generated_location = 'build/generated-sources/jooq'
+    jooq_package = 'me.yeonhyuk.testfixturecreatorlambda.jooq'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir jooq_generated_location
+        }
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // AWS Lambda Core
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.2'
+
+    // AWS Lambda Events
+    implementation 'com.amazonaws:aws-lambda-java-events:3.11.1'
+
+    // SLF4J API
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+
+    // Logback (대신 Log4j2)
+    implementation 'ch.qos.logback:logback-classic:1.4.12'
+    implementation 'ch.qos.logback:logback-core:1.4.12'
+
+    // AWS Lambda Logback appender
+    runtimeOnly 'org.jlib:jlib-awslambda-logback:1.0.0'
+
+    // Gson for JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // PostgreSQL JDBC Driver
+    implementation 'org.postgresql:postgresql:42.7.2'
+
+    // JOOQ
+    implementation 'org.jooq:jooq:3.19.0'
+    implementation 'org.jooq:jooq-meta:3.19.0'
+    implementation 'org.jooq:jooq-codegen:3.19.0'
+
+    jooqCodegen 'org.jooq:jooq-meta-extensions:3.19.10'
+
+    // HikariCP for connection pooling
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+}
+
+task deleteGeneratedFolder(type: Delete) {
+    delete jooq_generated_location
+}
+
+jooqCodegen {
+    dependsOn deleteGeneratedFolder
+}
+
+compileJava {
+    dependsOn jooqCodegen
+}
+
+application {
+    mainClass = 'me.yeonhyuk.testfixturecreatorlambda.App'
+}
+
+shadowJar {
+    archiveBaseName.set('lambda-java-function')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    manifest {
+        attributes 'Main-Class': 'me.yeonhyuk.testfixturecreatorlambda.App'
+    }
+}
+
+tasks.build.dependsOn tasks.shadowJar
+
+jooq {
+    configuration {
+        generator {
+            name = "org.jooq.codegen.JavaGenerator"
+            database {
+                name = "org.jooq.meta.extensions.ddl.DDLDatabase"
+                properties {
+
+                    // Specify the location of your SQL script.
+                    // You may use ant-style file matching, e.g. /path/**/to/*.sql
+                    //
+                    // Where:
+                    // - ** matches any directory subtree
+                    // - * matches any number of characters in a directory / file name
+                    // - ? matches a single character in a directory / file name
+                    property {
+                        key = "scripts"
+                        value = "src/main/resources/sql/schema.sql"
+                    }
+
+                    // The default name case for unquoted objects:
+                    //
+                    // - as_is: unquoted object names are kept unquoted
+                    // - upper: unquoted object names are turned into upper case (most databases)
+                    // - lower: unquoted object names are turned into lower case (e.g. PostgreSQL)
+                    property {
+                        key = "defaultNameCase"
+                        value = "lower"
+                    }
+                }
+            }
+            target {
+                packageName = jooq_package
+                directory = jooq_generated_location
+            }
+        }
+    }
+}
